@@ -1,6 +1,8 @@
 import tempfile
 import unittest
 from pathlib import Path
+import json
+from unittest.mock import patch
 
 from campus_alerts.config import AppConfig
 from campus_alerts.database import confirm_event, create_event, initialize_database, list_events
@@ -30,7 +32,9 @@ class AssessmentTests(unittest.TestCase):
             static_dir=Path("static"),
             deepseek_api_key="",
             deepseek_api_url="https://example.invalid",
-            deepseek_model="deepseek-chat",
+            deepseek_model="deepseek-v4-flash",
+            deepseek_thinking_type="enabled",
+            deepseek_reasoning_effort="high",
             deepseek_timeout_seconds=1,
         )
         assessment = assess_event(
@@ -45,6 +49,131 @@ class AssessmentTests(unittest.TestCase):
 
         self.assertEqual(assessment["source"], "heuristic")
         self.assertEqual(assessment["type"], "设施故障")
+
+    def test_deepseek_request_uses_v4_flash_template(self):
+        captured = {}
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, traceback):
+                return False
+
+            def read(self):
+                response_payload = {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": json.dumps(
+                                    {
+                                        "type": "消防火情",
+                                        "urgency": "critical",
+                                        "urgency_score": 4,
+                                        "reason": "存在火灾风险。",
+                                    },
+                                    ensure_ascii=False,
+                                )
+                            }
+                        }
+                    ]
+                }
+                return json.dumps(response_payload, ensure_ascii=False).encode("utf-8")
+
+        def fake_urlopen(http_request, timeout):
+            captured["timeout"] = timeout
+            captured["headers"] = dict(http_request.header_items())
+            captured["body"] = http_request.data.decode("utf-8")
+            return FakeResponse()
+
+        config = AppConfig(
+            host="127.0.0.1",
+            port=8000,
+            database_path=Path("unused.sqlite3"),
+            static_dir=Path("static"),
+            deepseek_api_key="test-key",
+            deepseek_api_url="https://api.deepseek.com/chat/completions",
+            deepseek_model="deepseek-v4-flash",
+            deepseek_thinking_type="enabled",
+            deepseek_reasoning_effort="high",
+            deepseek_timeout_seconds=7,
+        )
+
+        with patch("campus_alerts.deepseek.request.urlopen", fake_urlopen):
+            assessment = assess_event(
+                {
+                    "type": "消防火情",
+                    "description": "宿舍楼出现火灾和浓烟",
+                    "occurred_at": "2026-07-03T15:00",
+                    "location": "三号宿舍楼",
+                },
+                config,
+            )
+
+        request_body = json.loads(captured["body"])
+        self.assertEqual(request_body["model"], "deepseek-v4-flash")
+        self.assertEqual(request_body["thinking"], {"type": "enabled"})
+        self.assertEqual(request_body["reasoning_effort"], "high")
+        self.assertIs(request_body["stream"], False)
+        self.assertEqual(captured["timeout"], 7)
+        self.assertEqual(assessment["source"], "deepseek")
+        self.assertEqual(assessment["urgency"], "critical")
+
+    def test_deepseek_result_gets_local_safety_floor(self):
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, traceback):
+                return False
+
+            def read(self):
+                response_payload = {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": json.dumps(
+                                    {
+                                        "type": "其他",
+                                        "urgency": "low",
+                                        "urgency_score": 1,
+                                        "reason": "模型认为风险较低。",
+                                    },
+                                    ensure_ascii=False,
+                                )
+                            }
+                        }
+                    ]
+                }
+                return json.dumps(response_payload, ensure_ascii=False).encode("utf-8")
+
+        config = AppConfig(
+            host="127.0.0.1",
+            port=8000,
+            database_path=Path("unused.sqlite3"),
+            static_dir=Path("static"),
+            deepseek_api_key="test-key",
+            deepseek_api_url="https://api.deepseek.com/chat/completions",
+            deepseek_model="deepseek-v4-flash",
+            deepseek_thinking_type="enabled",
+            deepseek_reasoning_effort="high",
+            deepseek_timeout_seconds=7,
+        )
+
+        with patch("campus_alerts.deepseek.request.urlopen", return_value=FakeResponse()):
+            assessment = assess_event(
+                {
+                    "type": "其他",
+                    "description": "宿舍楼出现火灾和浓烟",
+                    "occurred_at": "2026-07-03T15:00",
+                    "location": "三号宿舍楼",
+                },
+                config,
+            )
+
+        self.assertEqual(assessment["type"], "消防火情")
+        self.assertEqual(assessment["urgency"], "critical")
+        self.assertIn("上调紧急度", assessment["reason"])
 
 
 class DatabaseTests(unittest.TestCase):
@@ -97,4 +226,3 @@ class ValidationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

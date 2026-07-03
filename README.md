@@ -31,7 +31,9 @@ python server.py
 ```env
 DEEPSEEK_API_KEY=你的 API Key
 DEEPSEEK_API_URL=https://api.deepseek.com/chat/completions
-DEEPSEEK_MODEL=deepseek-chat
+DEEPSEEK_MODEL=deepseek-v4-flash
+DEEPSEEK_THINKING_TYPE=enabled
+DEEPSEEK_REASONING_EFFORT=high
 ```
 
 未配置 Key 时，系统会继续使用本地规则评估，不会阻塞事件上报。

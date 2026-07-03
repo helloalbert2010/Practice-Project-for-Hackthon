@@ -63,6 +63,33 @@ HIGH_KEYWORDS = [
 
 LOW_KEYWORDS = ["遗失", "丢失", "噪音", "轻微", "咨询", "报修"]
 
+VALID_CATEGORIES = [
+    "消防火情",
+    "医疗急救",
+    "安全治安",
+    "心理危机",
+    "设施故障",
+    "交通出行",
+    "其他",
+]
+
+SYSTEM_PROMPT = """
+你是校园安全事件分级引擎。请根据上报信息做分类和紧急度评估。
+
+必须只输出一个 JSON 对象，不要输出 Markdown、解释、思考过程或额外文本。
+JSON 字段固定为：
+- type: 只能从 消防火情、医疗急救、安全治安、心理危机、设施故障、交通出行、其他 中选择
+- urgency: 只能是 low、medium、high、critical
+- urgency_score: 只能是 1、2、3、4，且 low=1、medium=2、high=3、critical=4
+- reason: 一句话中文理由
+
+分级规则：
+- 出现火灾、明显浓烟、爆炸、燃气泄漏、持刀、昏迷、坠楼、自杀/轻生、大量流血时，urgency 必须是 critical。
+- 出现打架、受伤、流血、骚扰尾随、电梯困人、中毒、严重设施危险时，urgency 至少是 high。
+- 无立即人身风险的一般报修、噪音、遗失物品可评为 low。
+- 信息不足但可能影响安全时，评为 medium，不要评为 low。
+""".strip()
+
 
 def assess_event(event_payload: dict[str, Any], config: AppConfig) -> dict[str, Any]:
     if config.deepseek_api_key:
@@ -90,20 +117,16 @@ def _call_deepseek(event_payload: dict[str, Any], config: AppConfig) -> dict[str
         "messages": [
             {
                 "role": "system",
-                "content": (
-                    "你是校园安全事件分级助手。请根据上报信息输出严格 JSON，"
-                    "字段为 type、urgency、urgency_score、reason。"
-                    "urgency 只能是 low、medium、high、critical，"
-                    "urgency_score 为 1 到 4 的整数。"
-                ),
+                "content": SYSTEM_PROMPT,
             },
             {
                 "role": "user",
                 "content": json.dumps(prompt, ensure_ascii=False),
             },
         ],
-        "temperature": 0.2,
-        "response_format": {"type": "json_object"},
+        "thinking": {"type": config.deepseek_thinking_type},
+        "reasoning_effort": config.deepseek_reasoning_effort,
+        "stream": False,
     }
     encoded_body = json.dumps(body, ensure_ascii=False).encode("utf-8")
     http_request = request.Request(
@@ -139,7 +162,7 @@ def _parse_json_content(content: str) -> dict[str, Any]:
 
 
 def normalize_assessment(raw: dict[str, Any], event_payload: dict[str, Any]) -> dict[str, Any]:
-    event_type = (
+    raw_event_type = (
         raw.get("type")
         or raw.get("category")
         or raw.get("事件类型")
@@ -154,13 +177,37 @@ def normalize_assessment(raw: dict[str, Any], event_payload: dict[str, Any]) -> 
         urgency_score = max(1, min(4, int(urgency_score)))
         urgency = urgency_from_score(urgency_score)
 
-    return {
-        "type": str(event_type),
+    assessment = {
+        "type": normalize_category(str(raw_event_type), event_payload),
         "urgency": urgency,
         "urgency_score": urgency_score,
         "reason": str(raw.get("reason") or raw.get("理由") or "DeepSeek 已完成分类与紧急度评估。"),
         "source": "deepseek",
     }
+    return apply_local_safety_floor(assessment, event_payload)
+
+
+def normalize_category(value: str, event_payload: dict[str, Any]) -> str:
+    cleaned_value = value.strip()
+    if cleaned_value in VALID_CATEGORIES:
+        return cleaned_value
+    return infer_category(event_payload)
+
+
+def apply_local_safety_floor(
+    assessment: dict[str, Any], event_payload: dict[str, Any]
+) -> dict[str, Any]:
+    local_assessment = heuristic_assessment(event_payload)
+    if local_assessment["urgency_score"] <= assessment["urgency_score"]:
+        return assessment
+
+    assessment = assessment.copy()
+    assessment["urgency"] = local_assessment["urgency"]
+    assessment["urgency_score"] = local_assessment["urgency_score"]
+    if assessment["type"] == "其他" and local_assessment["type"] != "其他":
+        assessment["type"] = local_assessment["type"]
+    assessment["reason"] = f"{assessment['reason']} 已根据本地安全规则上调紧急度。"
+    return assessment
 
 
 def normalize_urgency(value: Any) -> str:
@@ -220,4 +267,3 @@ def infer_category(event_payload: dict[str, Any]) -> str:
     if reported_type and reported_type != "其他":
         return reported_type
     return "其他"
-

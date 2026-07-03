@@ -50,6 +50,8 @@ class AppConfig:
     deepseek_api_key: str
     deepseek_api_url: str
     deepseek_model: str
+    deepseek_thinking_type: str
+    deepseek_reasoning_effort: str
     deepseek_timeout_seconds: int
 
     @classmethod
@@ -65,7 +67,10 @@ class AppConfig:
             deepseek_api_url=os.environ.get(
                 "DEEPSEEK_API_URL", "https://api.deepseek.com/chat/completions"
             ).strip(),
-            deepseek_model=os.environ.get("DEEPSEEK_MODEL", "deepseek-chat").strip(),
+            deepseek_model=os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-flash").strip(),
+            deepseek_thinking_type=os.environ.get("DEEPSEEK_THINKING_TYPE", "enabled").strip(),
+            deepseek_reasoning_effort=os.environ.get(
+                "DEEPSEEK_REASONING_EFFORT", "high"
+            ).strip(),
             deepseek_timeout_seconds=_int_from_env("DEEPSEEK_TIMEOUT_SECONDS", 20),
         )
-
