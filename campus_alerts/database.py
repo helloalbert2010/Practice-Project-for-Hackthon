@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS events (
     urgency TEXT NOT NULL,
     urgency_score INTEGER NOT NULL,
     assessment_reason TEXT NOT NULL,
+    handling_suggestion TEXT NOT NULL DEFAULT '请管理员查看事件详情后安排相应人员处理。',
     assessment_source TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
     confirmed_at TEXT,
@@ -60,6 +61,20 @@ def initialize_database(database_path: Path) -> None:
     database_path.parent.mkdir(parents=True, exist_ok=True)
     with managed_connection(database_path) as connection:
         connection.executescript(SCHEMA)
+        migrate_database(connection)
+
+
+def migrate_database(connection: sqlite3.Connection) -> None:
+    columns = {row["name"] for row in connection.execute("PRAGMA table_info(events)").fetchall()}
+    if "handling_suggestion" not in columns:
+        connection.execute(
+            """
+            ALTER TABLE events
+            ADD COLUMN handling_suggestion TEXT NOT NULL
+            DEFAULT '请管理员查看事件详情后安排相应人员处理。'
+            """
+        )
+        connection.commit()
 
 
 def utc_now() -> str:
@@ -84,9 +99,10 @@ def create_event(
                 urgency,
                 urgency_score,
                 assessment_reason,
+                handling_suggestion,
                 assessment_source,
                 created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 event_payload["type"],
@@ -99,6 +115,7 @@ def create_event(
                 assessment["urgency"],
                 int(assessment["urgency_score"]),
                 assessment["reason"],
+                assessment["suggestion"],
                 assessment["source"],
                 created_at,
             ),

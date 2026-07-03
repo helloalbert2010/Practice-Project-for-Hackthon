@@ -52,6 +52,10 @@ function renderResult(payload) {
     <div class="result-line"><strong>紧急度</strong><span>${escapeHtml(urgency)}</span></div>
     <div class="result-line"><strong>评估来源</strong><span>${escapeHtml(event.assessment_source)}</span></div>
     <p>${escapeHtml(event.assessment_reason)}</p>
+    <div class="suggestion-block">
+      <strong>处理建议</strong>
+      <p>${escapeHtml(event.handling_suggestion)}</p>
+    </div>
   `;
 }
 

@@ -105,6 +105,8 @@ function renderEvents() {
             <strong>描述：</strong>${escapeHtml(event.description)}
             <br />
             <strong>评估：</strong>${escapeHtml(event.assessment_reason)}
+            <br />
+            <strong>处理建议：</strong>${escapeHtml(event.handling_suggestion)}
           </td>
         </tr>
       `;

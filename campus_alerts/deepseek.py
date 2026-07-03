@@ -82,6 +82,7 @@ JSON 字段固定为：
 - urgency: 只能是 low、medium、high、critical
 - urgency_score: 只能是 1、2、3、4，且 low=1、medium=2、high=3、critical=4
 - reason: 一句话中文理由
+- suggestion: 一到两句话中文处理建议，说明接下来应联系谁、先做什么、如何控制风险
 
 分级规则：
 - 出现火灾、明显浓烟、爆炸、燃气泄漏、持刀、昏迷、坠楼、自杀/轻生、大量流血时，urgency 必须是 critical。
@@ -182,6 +183,13 @@ def normalize_assessment(raw: dict[str, Any], event_payload: dict[str, Any]) -> 
         "urgency": urgency,
         "urgency_score": urgency_score,
         "reason": str(raw.get("reason") or raw.get("理由") or "DeepSeek 已完成分类与紧急度评估。"),
+        "suggestion": str(
+            raw.get("suggestion")
+            or raw.get("handling_suggestion")
+            or raw.get("advice")
+            or raw.get("处理建议")
+            or build_handling_suggestion(event_payload, urgency, str(raw_event_type))
+        ),
         "source": "deepseek",
     }
     return apply_local_safety_floor(assessment, event_payload)
@@ -207,6 +215,7 @@ def apply_local_safety_floor(
     if assessment["type"] == "其他" and local_assessment["type"] != "其他":
         assessment["type"] = local_assessment["type"]
     assessment["reason"] = f"{assessment['reason']} 已根据本地安全规则上调紧急度。"
+    assessment["suggestion"] = local_assessment["suggestion"]
     return assessment
 
 
@@ -253,6 +262,7 @@ def heuristic_assessment(event_payload: dict[str, Any]) -> dict[str, Any]:
         "urgency": urgency,
         "urgency_score": URGENCY_SCORES[urgency],
         "reason": reason,
+        "suggestion": build_handling_suggestion(event_payload, urgency, category),
         "source": "heuristic",
     }
 
@@ -267,3 +277,18 @@ def infer_category(event_payload: dict[str, Any]) -> str:
     if reported_type and reported_type != "其他":
         return reported_type
     return "其他"
+
+
+def build_handling_suggestion(
+    event_payload: dict[str, Any], urgency: str, category: str | None = None
+) -> str:
+    location = str(event_payload.get("location") or "现场").strip() or "现场"
+    event_type = category or infer_category(event_payload)
+
+    if urgency == "critical":
+        return f"请立即联系校保卫处和相关应急部门赶往{location}，先疏散周边人员并避免围观，必要时同步拨打 110/119/120。"
+    if urgency == "high":
+        return f"请尽快通知值班管理员和保卫处到{location}核实处置，保持现场通道畅通，并持续关注是否升级为紧急事件。"
+    if urgency == "medium":
+        return f"请安排相关责任人到{location}核实{event_type}情况，记录现场照片或补充信息，并在确认后决定是否升级处理。"
+    return f"请将{event_type}记录到待办队列，安排对应部门到{location}跟进处理，并向上报人反馈处理进度。"

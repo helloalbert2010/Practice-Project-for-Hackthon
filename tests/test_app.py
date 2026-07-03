@@ -71,6 +71,7 @@ class AssessmentTests(unittest.TestCase):
                                         "urgency": "critical",
                                         "urgency_score": 4,
                                         "reason": "存在火灾风险。",
+                                        "suggestion": "立即疏散并联系消防。",
                                     },
                                     ensure_ascii=False,
                                 )
@@ -118,6 +119,7 @@ class AssessmentTests(unittest.TestCase):
         self.assertEqual(captured["timeout"], 7)
         self.assertEqual(assessment["source"], "deepseek")
         self.assertEqual(assessment["urgency"], "critical")
+        self.assertEqual(assessment["suggestion"], "立即疏散并联系消防。")
 
     def test_deepseek_result_gets_local_safety_floor(self):
         class FakeResponse:
@@ -173,6 +175,7 @@ class AssessmentTests(unittest.TestCase):
 
         self.assertEqual(assessment["type"], "消防火情")
         self.assertEqual(assessment["urgency"], "critical")
+        self.assertIn("联系校保卫处", assessment["suggestion"])
         self.assertIn("上调紧急度", assessment["reason"])
 
 
@@ -194,11 +197,13 @@ class DatabaseTests(unittest.TestCase):
                     "urgency": "high",
                     "urgency_score": 3,
                     "reason": "涉及人身安全。",
+                    "suggestion": "请保卫处到场处置。",
                     "source": "heuristic",
                 },
             )
 
             self.assertEqual(event["status"], "pending")
+            self.assertEqual(event["handling_suggestion"], "请保卫处到场处置。")
             self.assertEqual(len(list_events(database_path)), 1)
 
             confirmed = confirm_event(database_path, event["id"])

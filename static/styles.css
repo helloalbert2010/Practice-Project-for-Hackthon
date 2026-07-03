@@ -236,6 +236,18 @@ button:disabled {
   border-bottom: 0;
 }
 
+.suggestion-block {
+  margin-top: 16px;
+  padding: 14px;
+  border-left: 4px solid var(--primary);
+  border-radius: 8px;
+  background: #f4faf9;
+}
+
+.suggestion-block p {
+  margin: 8px 0 0;
+}
+
 .admin-toolbar {
   display: flex;
   justify-content: space-between;
@@ -404,4 +416,3 @@ tr:last-child td {
     width: 100%;
   }
 }
-
