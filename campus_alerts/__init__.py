@@ -1,0 +1,2 @@
+"""Campus incident alert system."""
+

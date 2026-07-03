@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>管理员事件列表</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Admin</p>
+        <h1>事件管理</h1>
+      </div>
+      <nav class="nav-actions">
+        <a class="link-button" href="/">上报事件</a>
+      </nav>
+    </header>
+
+    <main class="shell admin-shell">
+      <section class="panel admin-panel">
+        <div class="admin-toolbar">
+          <div class="section-heading">
+            <p class="eyebrow">Queue</p>
+            <h2>事件列表</h2>
+          </div>
+
+          <div class="toolbar-controls">
+            <label class="compact-label">
+              <span>排序</span>
+              <select id="sort-select">
+                <option value="urgency">紧急度优先</option>
+                <option value="type">类型优先</option>
+                <option value="time">时间优先</option>
+                <option value="status">待确认优先</option>
+              </select>
+            </label>
+            <button id="refresh-button" class="secondary-button" type="button">刷新</button>
+          </div>
+        </div>
+
+        <div id="summary-grid" class="summary-grid"></div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>类型</th>
+                <th>紧急度</th>
+                <th>地点</th>
+                <th>发生时间</th>
+                <th>状态</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="events-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script src="/admin.js"></script>
+  </body>
+</html>
+

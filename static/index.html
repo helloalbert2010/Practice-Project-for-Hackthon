@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>校园事件上报</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Campus Alert</p>
+        <h1>校园事件上报</h1>
+      </div>
+      <nav class="nav-actions">
+        <a class="link-button" href="/admin">管理员界面</a>
+      </nav>
+    </header>
+
+    <main class="shell report-shell">
+      <section class="panel report-panel">
+        <div class="section-heading">
+          <p class="eyebrow">Report</p>
+          <h2>提交事件</h2>
+        </div>
+
+        <form id="event-form" class="form-grid">
+          <label>
+            <span>事件类型</span>
+            <select name="type" required>
+              <option value="安全治安">安全治安</option>
+              <option value="医疗急救">医疗急救</option>
+              <option value="消防火情">消防火情</option>
+              <option value="设施故障">设施故障</option>
+              <option value="心理危机">心理危机</option>
+              <option value="交通出行">交通出行</option>
+              <option value="其他">其他</option>
+            </select>
+          </label>
+
+          <label>
+            <span>发生时间</span>
+            <input name="occurred_at" type="datetime-local" required />
+          </label>
+
+          <label class="wide">
+            <span>地点</span>
+            <input name="location" type="text" placeholder="例如：一号教学楼 302" required />
+          </label>
+
+          <label class="wide">
+            <span>事件描述</span>
+            <textarea
+              name="description"
+              rows="6"
+              placeholder="请描述正在发生的情况、涉及人员和现场风险"
+              required
+            ></textarea>
+          </label>
+
+          <label>
+            <span>上报人</span>
+            <input name="reporter_name" type="text" placeholder="可选" />
+          </label>
+
+          <label>
+            <span>联系方式</span>
+            <input name="reporter_contact" type="text" placeholder="可选" />
+          </label>
+
+          <div class="form-actions wide">
+            <button class="primary-button" type="submit">提交事件</button>
+            <button class="secondary-button" type="reset">清空</button>
+          </div>
+        </form>
+      </section>
+
+      <aside class="panel result-panel" aria-live="polite">
+        <div class="section-heading">
+          <p class="eyebrow">Assessment</p>
+          <h2>评估结果</h2>
+        </div>
+        <div id="submission-result" class="empty-state">事件提交后会在这里显示编号、分类和紧急度。</div>
+      </aside>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
+
