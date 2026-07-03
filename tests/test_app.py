@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 import json
+import sqlite3
 from unittest.mock import patch
 
 from campus_alerts.config import AppConfig
@@ -178,6 +179,62 @@ class AssessmentTests(unittest.TestCase):
         self.assertIn("联系校保卫处", assessment["suggestion"])
         self.assertIn("上调紧急度", assessment["reason"])
 
+    def test_blank_deepseek_suggestion_uses_local_fallback(self):
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, traceback):
+                return False
+
+            def read(self):
+                response_payload = {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": json.dumps(
+                                    {
+                                        "type": "安全治安",
+                                        "urgency": "critical",
+                                        "urgency_score": 4,
+                                        "reason": "发生枪击且存在持续攻击风险。",
+                                        "suggestion": "   ",
+                                    },
+                                    ensure_ascii=False,
+                                )
+                            }
+                        }
+                    ]
+                }
+                return json.dumps(response_payload, ensure_ascii=False).encode("utf-8")
+
+        config = AppConfig(
+            host="127.0.0.1",
+            port=8000,
+            database_path=Path("unused.sqlite3"),
+            static_dir=Path("static"),
+            deepseek_api_key="test-key",
+            deepseek_api_url="https://api.deepseek.com/chat/completions",
+            deepseek_model="deepseek-v4-flash",
+            deepseek_thinking_type="enabled",
+            deepseek_reasoning_effort="high",
+            deepseek_timeout_seconds=7,
+        )
+
+        with patch("campus_alerts.deepseek.request.urlopen", return_value=FakeResponse()):
+            assessment = assess_event(
+                {
+                    "type": "安全治安",
+                    "description": "发生枪击且持枪分子正在无差别攻击",
+                    "occurred_at": "2026-07-03T15:00",
+                    "location": "教学楼",
+                },
+                config,
+            )
+
+        self.assertIn("联系校保卫处", assessment["suggestion"])
+        self.assertNotEqual(assessment["suggestion"].strip(), "")
+
 
 class DatabaseTests(unittest.TestCase):
     def test_create_list_and_confirm_event(self):
@@ -210,6 +267,66 @@ class DatabaseTests(unittest.TestCase):
             self.assertIsNotNone(confirmed)
             self.assertEqual(confirmed["status"], "confirmed")
             self.assertTrue(confirmed["confirmed"])
+
+    def test_create_event_fills_blank_handling_suggestion(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "events.sqlite3"
+            initialize_database(database_path)
+            event = create_event(
+                database_path,
+                {
+                    "type": "安全治安",
+                    "description": "发生枪击且持枪分子正在无差别攻击",
+                    "occurred_at": "2026-07-03T15:10",
+                    "location": "教学楼",
+                },
+                {
+                    "type": "安全治安",
+                    "urgency": "critical",
+                    "urgency_score": 4,
+                    "reason": "发生枪击且存在持续攻击风险。",
+                    "suggestion": " ",
+                    "source": "deepseek",
+                },
+            )
+
+            self.assertIn("联系校保卫处", event["handling_suggestion"])
+            self.assertNotEqual(event["handling_suggestion"].strip(), "")
+
+    def test_list_events_fills_existing_blank_handling_suggestion(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = Path(temp_dir) / "events.sqlite3"
+            initialize_database(database_path)
+            event = create_event(
+                database_path,
+                {
+                    "type": "安全治安",
+                    "description": "发生枪击且持枪分子正在无差别攻击",
+                    "occurred_at": "2026-07-03T15:10",
+                    "location": "教学楼",
+                },
+                {
+                    "type": "安全治安",
+                    "urgency": "critical",
+                    "urgency_score": 4,
+                    "reason": "发生枪击且存在持续攻击风险。",
+                    "suggestion": "临时建议",
+                    "source": "deepseek",
+                },
+            )
+            connection = sqlite3.connect(database_path)
+            try:
+                connection.execute(
+                    "UPDATE events SET handling_suggestion = '' WHERE id = ?",
+                    (event["id"],),
+                )
+                connection.commit()
+            finally:
+                connection.close()
+
+            events = list_events(database_path)
+            self.assertIn("联系校保卫处", events[0]["handling_suggestion"])
+            self.assertNotEqual(events[0]["handling_suggestion"].strip(), "")
 
 
 class ValidationTests(unittest.TestCase):

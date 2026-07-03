@@ -7,6 +7,8 @@ from pathlib import Path
 from collections.abc import Iterator
 from typing import Any
 
+from campus_alerts.deepseek import build_handling_suggestion
+
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS events (
@@ -85,6 +87,13 @@ def create_event(
     database_path: Path, event_payload: dict[str, Any], assessment: dict[str, Any]
 ) -> dict[str, Any]:
     created_at = utc_now()
+    suggestion = str(assessment.get("suggestion") or "").strip()
+    if not suggestion:
+        suggestion = build_handling_suggestion(
+            event_payload,
+            str(assessment.get("urgency") or "medium"),
+            str(assessment.get("type") or event_payload.get("type") or "其他"),
+        )
     with managed_connection(database_path) as connection:
         cursor = connection.execute(
             """
@@ -115,7 +124,7 @@ def create_event(
                 assessment["urgency"],
                 int(assessment["urgency_score"]),
                 assessment["reason"],
-                assessment["suggestion"],
+                suggestion,
                 assessment["source"],
                 created_at,
             ),
@@ -160,5 +169,16 @@ def confirm_event(database_path: Path, event_id: int) -> dict[str, Any] | None:
 
 def row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
     data = dict(row)
+    suggestion = str(data.get("handling_suggestion") or "").strip()
+    if not suggestion:
+        data["handling_suggestion"] = build_handling_suggestion(
+            {
+                "type": data.get("reported_type"),
+                "description": data.get("description"),
+                "location": data.get("location"),
+            },
+            str(data.get("urgency") or "medium"),
+            str(data.get("ai_type") or data.get("reported_type") or "其他"),
+        )
     data["confirmed"] = data["status"] == "confirmed"
     return data

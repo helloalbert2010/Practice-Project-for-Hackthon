@@ -77,12 +77,12 @@ SYSTEM_PROMPT = """
 你是校园安全事件分级引擎。请根据上报信息做分类和紧急度评估。
 
 必须只输出一个 JSON 对象，不要输出 Markdown、解释、思考过程或额外文本。
-JSON 字段固定为：
+JSON 字段固定为，字段名必须使用英文：
 - type: 只能从 消防火情、医疗急救、安全治安、心理危机、设施故障、交通出行、其他 中选择
 - urgency: 只能是 low、medium、high、critical
 - urgency_score: 只能是 1、2、3、4，且 low=1、medium=2、high=3、critical=4
 - reason: 一句话中文理由
-- suggestion: 一到两句话中文处理建议，说明接下来应联系谁、先做什么、如何控制风险
+- suggestion: 一到两句话中文处理建议，说明接下来应联系谁、先做什么、如何控制风险，不能为空
 
 分级规则：
 - 出现火灾、明显浓烟、爆炸、燃气泄漏、持刀、昏迷、坠楼、自杀/轻生、大量流血时，urgency 必须是 critical。
@@ -178,18 +178,23 @@ def normalize_assessment(raw: dict[str, Any], event_payload: dict[str, Any]) -> 
         urgency_score = max(1, min(4, int(urgency_score)))
         urgency = urgency_from_score(urgency_score)
 
+    suggestion = first_nonblank(
+        raw.get("suggestion"),
+        raw.get("handling_suggestion"),
+        raw.get("advice"),
+        raw.get("recommendation"),
+        raw.get("handling_advice"),
+        raw.get("处理建议"),
+        raw.get("处置建议"),
+        raw.get("建议"),
+    ) or build_handling_suggestion(event_payload, urgency, str(raw_event_type))
+
     assessment = {
         "type": normalize_category(str(raw_event_type), event_payload),
         "urgency": urgency,
         "urgency_score": urgency_score,
         "reason": str(raw.get("reason") or raw.get("理由") or "DeepSeek 已完成分类与紧急度评估。"),
-        "suggestion": str(
-            raw.get("suggestion")
-            or raw.get("handling_suggestion")
-            or raw.get("advice")
-            or raw.get("处理建议")
-            or build_handling_suggestion(event_payload, urgency, str(raw_event_type))
-        ),
+        "suggestion": suggestion,
         "source": "deepseek",
     }
     return apply_local_safety_floor(assessment, event_payload)
@@ -238,6 +243,16 @@ def urgency_from_score(score: int) -> str:
     if score == 2:
         return "medium"
     return "low"
+
+
+def first_nonblank(*values: Any) -> str | None:
+    for value in values:
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return None
 
 
 def heuristic_assessment(event_payload: dict[str, Any]) -> dict[str, Any]:
